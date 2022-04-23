@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-var ErrOffsetNotFounc = fmt.Errorf("offset not found")
+var ErrOffsetNotFound = fmt.Errorf("offset not found")
 
 type Log struct {
 	mu      sync.Mutex
@@ -28,7 +28,7 @@ func (c *Log) Read(offset uint64) (Record, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if offset >= uint64(len(c.records)) {
-		return Record{}, ErrOffsetNotFounc
+		return Record{}, ErrOffsetNotFound
 	}
 	return c.records[offset], nil
 }
