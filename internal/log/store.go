@@ -77,14 +77,14 @@ func (s *store) Read(pos uint64) ([]byte, error) {
 	return b, nil
 }
 
-// ReadAt reads the record data for the given offset into `p`.
-func (s *store) ReadAt(p []byte, off int64) (int, error) {
+// ReadAt reads the record data for the given pos into `p`.
+func (s *store) ReadAt(p []byte, pos int64) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.buf.Flush(); err != nil {
 		return 0, err
 	}
-	return s.File.ReadAt(p, off)
+	return s.File.ReadAt(p, pos)
 }
 
 // Close flushes the buffer and closes the file.
