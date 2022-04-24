@@ -1,1 +1,1 @@
-# Distributed Systems in Go - Prolog
+# Distributed Systems in Go - Proglog
