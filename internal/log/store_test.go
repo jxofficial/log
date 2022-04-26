@@ -73,3 +73,41 @@ func testReadAt(t *testing.T, s *store) {
 		pos += int64(nn)
 	}
 }
+
+func TestStoreClose(t *testing.T) {
+	f, err := ioutil.TempFile("", "store_close_test")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	s, err := newStore(f)
+	require.NoError(t, err)
+	_, _, err = s.Append(recordData)
+	require.NoError(t, err)
+
+	f, beforeSize, err := openFile(f.Name())
+	require.NoError(t, err)
+	require.Equal(t, int64(0), beforeSize)
+
+	err = s.Close()
+	require.NoError(t, err)
+
+	_, afterSize, err := openFile(f.Name())
+	require.NoError(t, err)
+	require.Equal(t, int64(recordLen), afterSize)
+}
+
+func openFile(name string) (file *os.File, size int64, err error) {
+	f, err := os.OpenFile(
+		name,
+		os.O_RDWR|os.O_CREATE|os.O_APPEND,
+		0644,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, 0, err
+	}
+	return f, fi.Size(), nil
+}

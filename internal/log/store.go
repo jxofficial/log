@@ -35,7 +35,7 @@ func newStore(f *os.File) (*store, error) {
 	}, nil
 }
 
-// Append appends a record (p) into the store. It returns the number of bytes written,
+// Append appends byte slice of record data (p) into the store. It returns the number of bytes written,
 // and the starting byte position of the record entry in the store. It also returns an error if any.
 func (s *store) Append(p []byte) (nn, pos uint64, err error) {
 	s.mu.Lock()
