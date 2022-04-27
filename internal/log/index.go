@@ -37,9 +37,9 @@ func (i *index) Read(in int64) (out uint32, pos uint64, err error) {
 		return 0, 0, io.EOF
 	}
 	// record offset
-	out = enc.Uint32(i.mmap[pos : pos+offsetLenNumBytes])
+	out = enc.Uint32(i.mmap[indexEntryPos : indexEntryPos+offsetLenNumBytes])
 	// byte the record starts at in the store
-	pos = enc.Uint64(i.mmap[pos+offsetLenNumBytes : pos+indexLenNumBytes])
+	pos = enc.Uint64(i.mmap[indexEntryPos+offsetLenNumBytes : indexEntryPos+indexLenNumBytes])
 	return out, pos, nil
 }
 
