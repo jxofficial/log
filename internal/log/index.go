@@ -7,7 +7,7 @@ import (
 	"github.com/tysonmote/gommap"
 )
 
-var (
+const (
 	offsetLenNumBytes uint64 = 4
 	posLenNumBytes    uint64 = 8
 	indexLenNumBytes  uint64 = offsetLenNumBytes + posLenNumBytes
@@ -19,8 +19,8 @@ type index struct {
 	size uint64
 }
 
-// Read takes in a record offset and returns the record's offset, its starting byte in the record store,
-// and an error if any.
+// Read takes in a record offset and returns the record's offset,
+// its starting byte in the record store, and an error if any.
 func (i *index) Read(in int64) (out uint32, pos uint64, err error) {
 	if i.size == 0 {
 		return 0, 0, io.EOF
@@ -32,9 +32,27 @@ func (i *index) Read(in int64) (out uint32, pos uint64, err error) {
 		out = uint32(in)
 	}
 
-	//indexEntryPos := uint64(out) * indexLenNumBytes
-
+	indexEntryPos := uint64(out) * indexLenNumBytes
+	if i.size < indexEntryPos+indexLenNumBytes {
+		return 0, 0, io.EOF
+	}
+	// record offset
+	out = enc.Uint32(i.mmap[pos : pos+offsetLenNumBytes])
+	// byte the record starts at in the store
+	pos = enc.Uint64(i.mmap[pos+offsetLenNumBytes : pos+indexLenNumBytes])
 	return out, pos, nil
+}
+
+// Write writes an index entry into the index.
+func (i *index) Write(off uint32, pos uint64) error {
+	// Check if mmap has enough space to add a new index entry.
+	if uint64(len(i.mmap)) < i.size+indexLenNumBytes {
+		return io.EOF
+	}
+	enc.PutUint32(i.mmap[i.size:i.size+offsetLenNumBytes], off)
+	enc.PutUint64(i.mmap[i.size+offsetLenNumBytes:i.size+indexLenNumBytes], pos)
+	i.size += indexLenNumBytes
+	return nil
 }
 
 // Close synchronizes the data from the memory map back into the file, and closes the file.
@@ -51,6 +69,10 @@ func (i *index) Close() error {
 		return err
 	}
 	return i.file.Close()
+}
+
+func (i *index) Name() string {
+	return i.file.Name()
 }
 
 func newIndex(f *os.File, c Config) (*index, error) {
