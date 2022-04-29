@@ -19,7 +19,7 @@ type index struct {
 	size uint64
 }
 
-// Read takes in a record offset and returns the record's offset,
+// Read takes in an index offset and returns the index offset,
 // its starting byte in the record store, and an error if any.
 func (i *index) Read(in int64) (out uint32, pos uint64, err error) {
 	if i.size == 0 {
@@ -44,6 +44,7 @@ func (i *index) Read(in int64) (out uint32, pos uint64, err error) {
 }
 
 // Write writes an index entry into the index.
+// The offset argument index entry's offset, which is relative to the record's offset.
 func (i *index) Write(off uint32, pos uint64) error {
 	// Check if mmap has enough space to add a new index entry.
 	if uint64(len(i.mmap)) < i.size+indexLenNumBytes {
