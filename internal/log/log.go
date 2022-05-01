@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	api "github.com/jxofficial/log/api/v1"
 	"io/ioutil"
 	"path"
@@ -87,6 +88,29 @@ func (l *Log) Append(record *api.Record) (uint64, error) {
 	return off, err
 }
 
+func (l *Log) Read(offset uint64) (*api.Record, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	var segment *segment
+	// Find the segment which houses the record having the provided offset.
+	for _, s := range l.segments {
+		// We need the second condition because we cannot just take the first occurrence of offset > baseOffset.
+		// The first segment could hold offsets of 0 - 10, and if the offset is 15,
+		// then the record is actually found in the second segment.
+		if offset >= s.baseOffset && offset < s.nextOffset {
+			segment = s
+			break
+		}
+	}
+	// Second condition is technically not needed as `segment` will already be nil
+	// if you pass in an offset like 10000000,
+	// as it will not satisfy the condition of offset < s.nextOffset in the for loop.
+	if segment == nil || offset >= segment.nextOffset {
+		return nil, fmt.Errorf("offset out of range: %d", offset)
+	}
+	return segment.Read(offset)
+}
+
 // newSegment adds a new segment to `log.segments`, and sets it as the activeSegment.
 func (l *Log) newSegment(baseOffset uint64) error {
 	s, err := newSegment(l.Dir, baseOffset, l.Config)
@@ -95,5 +119,16 @@ func (l *Log) newSegment(baseOffset uint64) error {
 	}
 	l.segments = append(l.segments, s)
 	l.activeSegment = s
+	return nil
+}
+
+func (l *Log) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, s := range l.segments {
+		if err := s.Close(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
