@@ -3,7 +3,9 @@ package log
 import (
 	"fmt"
 	api "github.com/jxofficial/log/api/v1"
+	"io"
 	"io/ioutil"
+	"os"
 	"path"
 	"sort"
 	"strconv"
@@ -111,17 +113,7 @@ func (l *Log) Read(offset uint64) (*api.Record, error) {
 	return segment.Read(offset)
 }
 
-// newSegment adds a new segment to `log.segments`, and sets it as the activeSegment.
-func (l *Log) newSegment(baseOffset uint64) error {
-	s, err := newSegment(l.Dir, baseOffset, l.Config)
-	if err != nil {
-		return err
-	}
-	l.segments = append(l.segments, s)
-	l.activeSegment = s
-	return nil
-}
-
+// Close closes all the segments.
 func (l *Log) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -130,5 +122,91 @@ func (l *Log) Close() error {
 			return err
 		}
 	}
+	return nil
+}
+
+// Remove closes the log and removes all the associated files.
+func (l *Log) Remove() error {
+	if err := l.Close(); err != nil {
+		return err
+	}
+	return os.RemoveAll(l.Dir)
+}
+
+// Reset removes the log and creates a new log.
+func (l *Log) Reset() error {
+	if err := l.Remove(); err != nil {
+		return err
+	}
+	return l.setup()
+}
+
+// helper methods
+
+// LowestOffset returns the offset of the earliest record in the log.
+func (l *Log) LowestOffset() (uint64, error) {
+	l.mu.RLock()
+	l.mu.RUnlock()
+	return l.segments[0].baseOffset, nil
+}
+
+// HighestOffset returns the largest offset in the log.
+func (l *Log) HighestOffset() (uint64, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	offset := l.segments[len(l.segments)-1].nextOffset
+	if offset == 0 {
+		return 0, nil
+	}
+	return offset - 1, nil
+}
+
+// Truncate removes all segments whose highest offset is lower or equal to the `lowest` argument.
+func (l *Log) Truncate(lowest uint64) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var segments []*segment
+	for _, s := range l.segments {
+		if s.nextOffset-1 <= lowest {
+			if err := s.Remove(); err != nil {
+				return err
+			}
+			continue
+		}
+		segments = append(segments, s)
+	}
+	l.segments = segments
+	return nil
+}
+
+func (l *Log) Reader() io.Reader {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	readers := make([]io.Reader, len(l.segments))
+	for i, s := range l.segments {
+		readers[i] = &originalReader{s.store, 0}
+	}
+	return io.MultiReader(readers...)
+}
+
+type originalReader struct {
+	*store
+	offset int64
+}
+
+func (o *originalReader) Read(p []byte) (int, error) {
+	n, err := o.ReadAt(p, o.offset)
+	o.offset += int64(n)
+	return n, err
+}
+
+// newSegment appends a new segment to `log.segments`, and sets it as the activeSegment.
+func (l *Log) newSegment(baseOffset uint64) error {
+	s, err := newSegment(l.Dir, baseOffset, l.Config)
+	if err != nil {
+		return err
+	}
+	l.segments = append(l.segments, s)
+	l.activeSegment = s
 	return nil
 }
