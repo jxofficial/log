@@ -36,6 +36,7 @@ func NewLog(dir string, c Config) (*Log, error) {
 	return l, l.setup()
 }
 
+// setup setups the log using the store and index files in `log.Dir`
 func (l *Log) setup() error {
 	// Read all store and index files in the directory.
 	files, err := ioutil.ReadDir(l.Dir)
