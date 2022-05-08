@@ -1,7 +1,6 @@
 package log
 
 import (
-	"fmt"
 	api "github.com/jxofficial/log/api/v1"
 	"io"
 	"io/ioutil"
@@ -109,7 +108,7 @@ func (l *Log) Read(offset uint64) (*api.Record, error) {
 	// if you pass in an offset like 10000000,
 	// as it will not satisfy the condition of offset < s.nextOffset in the for loop.
 	if segment == nil || offset >= segment.nextOffset {
-		return nil, fmt.Errorf("offset out of range: %d", offset)
+		return nil, api.ErrOffsetOutOfRange{Offset: offset}
 	}
 	return segment.Read(offset)
 }
