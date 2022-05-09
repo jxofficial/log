@@ -4,7 +4,6 @@ go 1.18
 
 require (
 	github.com/golang/protobuf v1.5.2
-	github.com/gorilla/mux v1.8.0
 	github.com/stretchr/testify v1.7.1
 	github.com/tysonmote/gommap v0.0.1
 	google.golang.org/genproto v0.0.0-20220505152158-f39f71e6c8f3
