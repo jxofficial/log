@@ -22,6 +22,7 @@ func TestServer(t *testing.T) {
 	){
 		"produce/consume a message to/from the log succeeds": testProduceConsume,
 		"consume past boundary fails":                        testConsumePastBoundary,
+		"produce/consume stream works":                       testProduceConsumeStream,
 	}
 
 	for scenario, fn := range tests {
@@ -105,5 +106,53 @@ func testConsumePastBoundary(t *testing.T, client api.LogClient, cfg *Config) {
 	want := status.Code(api.ErrOffsetOutOfRange{}.GRPCStatus().Err())
 	if got != want {
 		t.Fatalf("got err status code: %v, want %v", got, want)
+	}
+}
+
+func testProduceConsumeStream(
+	t *testing.T,
+	client api.LogClient,
+	cfg *Config,
+) {
+	ctx := context.Background()
+	rr := []*api.Record{
+		{
+			Value:  []byte("first message"),
+			Offset: 0,
+		},
+		{
+			Value:  []byte("second message"),
+			Offset: 1,
+		},
+	}
+
+	{
+		stream, err := client.ProduceStream(ctx)
+		require.NoError(t, err)
+
+		for offset, r := range rr {
+			err = stream.Send(&api.ProduceRequest{Record: r})
+			require.NoError(t, err)
+			resp, err := stream.Recv()
+			require.NoError(t, err)
+			if resp.Offset != uint64(offset) {
+				t.Fatalf("got offset: %d, want: %d", resp.Offset, offset)
+			}
+		}
+	}
+
+	{
+		// Start streaming from offset 0.
+		stream, err := client.ConsumeStream(ctx, &api.ConsumeRequest{Offset: 0})
+		require.NoError(t, err)
+
+		for i, r := range rr {
+			resp, err := stream.Recv()
+			require.NoError(t, err)
+			require.Equal(t, resp.Record, &api.Record{
+				Value:  r.Value,
+				Offset: uint64(i),
+			})
+		}
 	}
 }
