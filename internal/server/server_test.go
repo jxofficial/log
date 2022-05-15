@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"github.com/jxofficial/log/internal/config"
 	"github.com/jxofficial/log/internal/log"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	"io/ioutil"
 	"net"
@@ -11,7 +13,6 @@ import (
 	api "github.com/jxofficial/log/api/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func TestServer(t *testing.T) {
@@ -43,8 +44,10 @@ func setupTest(t *testing.T, fn func(*Config)) (
 	listener, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
 
-	clientOptions := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	cc, err := grpc.Dial(listener.Addr().String(), clientOptions...)
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{CAFile: config.CAFile})
+	require.NoError(t, err)
+	clientCreds := credentials.NewTLS(clientTLSConfig)
+	cc, err := grpc.Dial(listener.Addr().String(), grpc.WithTransportCredentials(clientCreds))
 	require.NoError(t, err)
 
 	dir, err := ioutil.TempDir("", "server_test")
@@ -61,7 +64,17 @@ func setupTest(t *testing.T, fn func(*Config)) (
 		fn(cfg)
 	}
 
-	server, err := NewGRPCServer(cfg)
+	serverTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CertFile:      config.ServerCertFile,
+		KeyFile:       config.ServerKeyFile,
+		ServerAddress: listener.Addr().String(),
+		// Be explicit for now, since we are not implementing client authentication yet.
+		IsServer: false,
+		// Server does not need its own CA for now as well.
+	})
+	require.NoError(t, err)
+	serverCreds := credentials.NewTLS(serverTLSConfig)
+	server, err := NewGRPCServer(cfg, grpc.Creds(serverCreds))
 	require.NoError(t, err)
 
 	go func() {
