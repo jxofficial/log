@@ -18,7 +18,8 @@ import (
 func TestServer(t *testing.T) {
 	tests := map[string]func(
 		t *testing.T,
-		client api.LogClient,
+		rootClient api.LogClient,
+		nobodyClient api.LogClient,
 		cfg *Config,
 	){
 		"produce/consume a message to/from the log succeeds": testProduceConsume,
@@ -28,15 +29,16 @@ func TestServer(t *testing.T) {
 
 	for scenario, fn := range tests {
 		t.Run(scenario, func(t *testing.T) {
-			client, cfg, teardown := setupTest(t, nil)
+			rootClient, nobodyClient, cfg, teardown := setupTest(t, nil)
 			defer teardown()
-			fn(t, client, cfg)
+			fn(t, rootClient, nobodyClient, cfg)
 		})
 	}
 }
 
 func setupTest(t *testing.T, fn func(*Config)) (
-	client api.LogClient,
+	rootClient api.LogClient,
+	nobodyClient api.LogClient,
 	cfg *Config,
 	teardown func(),
 ) {
@@ -44,15 +46,31 @@ func setupTest(t *testing.T, fn func(*Config)) (
 	listener, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
 
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
-		CAFile:   config.CAFile,
-		CertFile: config.ClientCertFile,
-		KeyFile:  config.ClientKeyFile,
-	})
-	require.NoError(t, err)
-	clientCreds := credentials.NewTLS(clientTLSConfig)
-	cc, err := grpc.Dial(listener.Addr().String(), grpc.WithTransportCredentials(clientCreds))
-	require.NoError(t, err)
+	newClient := func(certPath, keyPath string) (
+		*grpc.ClientConn,
+		api.LogClient,
+		[]grpc.DialOption,
+	) {
+		tlsConfig, err := config.SetupTLSConfig(config.TLSConfig{
+			CAFile:   config.CAFile,
+			CertFile: certPath,
+			KeyFile:  keyPath,
+			IsServer: false,
+		})
+		require.NoError(t, err)
+		tlsCreds := credentials.NewTLS(tlsConfig)
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds)}
+		conn, err := grpc.Dial(listener.Addr().String(), opts...)
+		require.NoError(t, err)
+		client := api.NewLogClient(conn)
+		return conn, client, opts
+	}
+
+	var rootConn *grpc.ClientConn
+	rootConn, rootClient, _ = newClient(config.RootClientCertFile, config.RootClientKeyFile)
+
+	var nobodyConn *grpc.ClientConn
+	nobodyConn, nobodyClient, _ = newClient(config.NobodyClientCertFile, config.NobodyClientKeyFile)
 
 	dir, err := ioutil.TempDir("", "server_test")
 	require.NoError(t, err)
@@ -86,17 +104,16 @@ func setupTest(t *testing.T, fn func(*Config)) (
 		server.Serve(listener)
 	}()
 
-	client = api.NewLogClient(cc)
-
-	return client, cfg, func() {
+	return rootClient, nobodyClient, cfg, func() {
 		server.Stop()
-		cc.Close()
+		rootConn.Close()
+		nobodyConn.Close()
 		listener.Close()
 		clog.Remove()
 	}
 }
 
-func testProduceConsume(t *testing.T, client api.LogClient, cfg *Config) {
+func testProduceConsume(t *testing.T, client, _ api.LogClient, cfg *Config) {
 	ctx := context.Background()
 	r := &api.Record{Value: []byte("hello world")}
 
@@ -109,7 +126,7 @@ func testProduceConsume(t *testing.T, client api.LogClient, cfg *Config) {
 	require.Equal(t, r.Offset, consume.Record.Offset)
 }
 
-func testConsumePastBoundary(t *testing.T, client api.LogClient, cfg *Config) {
+func testConsumePastBoundary(t *testing.T, client, _ api.LogClient, cfg *Config) {
 	ctx := context.Background()
 	r := &api.Record{Value: []byte("hello world")}
 
@@ -129,7 +146,7 @@ func testConsumePastBoundary(t *testing.T, client api.LogClient, cfg *Config) {
 
 func testProduceConsumeStream(
 	t *testing.T,
-	client api.LogClient,
+	client, _ api.LogClient,
 	cfg *Config,
 ) {
 	ctx := context.Background()
