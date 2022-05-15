@@ -44,7 +44,11 @@ func setupTest(t *testing.T, fn func(*Config)) (
 	listener, err := net.Listen("tcp", ":0")
 	require.NoError(t, err)
 
-	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{CAFile: config.CAFile})
+	clientTLSConfig, err := config.SetupTLSConfig(config.TLSConfig{
+		CAFile:   config.CAFile,
+		CertFile: config.ClientCertFile,
+		KeyFile:  config.ClientKeyFile,
+	})
 	require.NoError(t, err)
 	clientCreds := credentials.NewTLS(clientTLSConfig)
 	cc, err := grpc.Dial(listener.Addr().String(), grpc.WithTransportCredentials(clientCreds))
@@ -68,9 +72,10 @@ func setupTest(t *testing.T, fn func(*Config)) (
 		CertFile:      config.ServerCertFile,
 		KeyFile:       config.ServerKeyFile,
 		ServerAddress: listener.Addr().String(),
-		// Be explicit for now, since we are not implementing client authentication yet.
-		IsServer: false,
-		// Server does not need its own CA for now as well.
+		IsServer:      true,
+		// Both server and client use the same CA which contains both client and server certs.
+		// But for the server's *tls.Config, the CA is not assigned to rootCA but clientCA.
+		CAFile: config.CAFile,
 	})
 	require.NoError(t, err)
 	serverCreds := credentials.NewTLS(serverTLSConfig)
